@@ -1,0 +1,46 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: defi-portfolio-tracker
+  datasource:
+    # --- Local dev default: in-memory H2, zero setup ---
+    url: jdbc:h2:mem:portfolio;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+    # --- Swap to Postgres for anything beyond local dev ---
+    # url: jdbc:postgresql://localhost:5432/portfolio_tracker
+    # driver-class-name: org.postgresql.Driver
+    # username: postgres
+    # password: postgres
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+web3:
+  # Free-tier RPC endpoint. Get one at alchemy.com or infura.io (Sepolia testnet).
+  rpc-url: ${WEB3_RPC_URL:https://eth-sepolia.g.alchemy.com/v2/demo}
+  # Addresses printed by contracts/scripts/deploy.js after deployment.
+  token-address: ${TOKEN_ADDRESS:0x0000000000000000000000000000000000000000}
+  staking-address: ${STAKING_ADDRESS:0x0000000000000000000000000000000000000000}
+  # How often (ms) the scheduled poller refreshes on-chain snapshots.
+  poll-interval-ms: ${POLL_INTERVAL_MS:60000}
+  # Wallet addresses to track by default (comma-separated). The API also
+  # accepts any address ad hoc via GET /api/wallets/{address}.
+  watched-wallets: ${WATCHED_WALLETS:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DeFi Portfolio Tracker</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --panel: #131826;
+    --border: #232a3b;
+    --text: #e6e9f0;
+    --muted: #8a91a6;
+    --accent: #5b8cff;
+    --green: #3ddc97;
+    --red: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 32px 24px 64px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; font-weight: 600; margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 24px; }
+  .search {
+    display: flex; gap: 8px; margin-bottom: 24px;
+  }
+  input {
+    flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--text); font-size: 0.9rem;
+  }
+  button {
+    padding: 10px 16px; border-radius: 8px; border: none; background: var(--accent);
+    color: white; font-weight: 600; cursor: pointer; font-size: 0.9rem;
+  }
+  button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+  }
+  .card .label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .card .value { font-size: 1.4rem; font-weight: 700; margin-top: 6px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 0.75rem; text-transform: uppercase; }
+  .pill { padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; }
+  .pill.open { background: rgba(61,220,151,0.15); color: var(--green); }
+  .pill.closed { background: rgba(255,107,107,0.15); color: var(--red); }
+  .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+  .error { color: var(--red); font-size: 0.85rem; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>DeFi Portfolio Tracker</h1>
+  <div class="sub">Reads live wallet balances and staking positions via a Spring Boot + Web3j backend.</div>
+
+  <div class="search">
+    <input id="walletInput" placeholder="0x... wallet address" />
+    <button onclick="loadWallet()">Load</button>
+    <button class="secondary" onclick="refreshWallet()">Force refresh</button>
+  </div>
+  <div id="errorBox" class="error"></div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="label">Token Balance</div>
+      <div class="value" id="tokenBalance">–</div>
+    </div>
+    <div class="card">
+      <div class="label">Staked Total</div>
+      <div class="value" id="stakedTotal">–</div>
+    </div>
+    <div class="card">
+      <div class="label">Pending Rewards</div>
+      <div class="value" id="pendingRewards">–</div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>#</th><th>Amount</th><th>Lock</th><th>APY</th><th>Rewards</th><th>Status</th></tr>
+    </thead>
+    <tbody id="positionsBody">
+      <tr><td colspan="6" class="empty">Load a wallet to see its staking positions</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+const API_BASE = "/api/wallets";
+
+function fmt(n) {
+  const num = parseFloat(n);
+  return isNaN(num) ? "0.00" : num.toLocaleString(undefined, { maximumFractionDigits: 4 });
+}
+
+function secondsToLabel(s) {
+  const days = Math.round(s / 86400);
+  return days + "d";
+}
+
+function render(data) {
+  document.getElementById("tokenBalance").textContent = fmt(data.tokenBalance) + " TRK";
+  document.getElementById("stakedTotal").textContent = fmt(data.stakedTotal) + " TRK";
+  document.getElementById("pendingRewards").textContent = fmt(data.pendingRewards) + " TRK";
+
+  const body = document.getElementById("positionsBody");
+  if (!data.positions || data.positions.length === 0) {
+    body.innerHTML = '<tr><td colspan="6" class="empty">No staking positions found</td></tr>';
+    return;
+  }
+
+  body.innerHTML = data.positions.map(p => `
+    <tr>
+      <td>${p.index}</td>
+      <td>${fmt(p.amount)} TRK</td>
+      <td>${secondsToLabel(p.lockDurationSeconds)}</td>
+      <td>${(p.rewardRateBps / 100).toFixed(1)}%</td>
+      <td>${fmt(p.pendingRewards)} TRK</td>
+      <td><span class="pill ${p.withdrawn ? 'closed' : 'open'}">${p.withdrawn ? 'Withdrawn' : (p.unlocked ? 'Unlocked' : 'Locked')}</span></td>
+    </tr>
+  `).join("");
+}
+
+function showError(msg) {
+  document.getElementById("errorBox").textContent = msg || "";
+}
+
+async function loadWallet() {
+  const address = document.getElementById("walletInput").value.trim();
+  showError("");
+  if (!address) { showError("Enter a wallet address first."); return; }
+
+  try {
+    const res = await fetch(`${API_BASE}/${address}`);
+    if (res.status === 404) {
+      showError("No snapshot yet for this wallet — click 'Force refresh' to read it from the chain.");
+      return;
+    }
+    if (!res.ok) throw new Error(await res.text());
+    render(await res.json());
+  } catch (e) {
+    showError("Failed to load wallet: " + e.message);
+  }
+}
+
+async function refreshWallet() {
+  const address = document.getElementById("walletInput").value.trim();
+  showError("");
+  if (!address) { showError("Enter a wallet address first."); return; }
+
+  try {
+    const res = await fetch(`${API_BASE}/${address}/refresh`, { method: "POST" });
+    if (!res.ok) throw new Error(await res.text());
+    render(await res.json());
+  } catch (e) {
+    showError("Failed to refresh from chain: " + e.message);
+  }
+}
+</script>
+</body>
+</html>
