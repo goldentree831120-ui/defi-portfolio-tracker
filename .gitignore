@@ -1,0 +1,10 @@
+node_modules/
+target/
+.env
+*.class
+.idea/
+*.log
+cache/
+artifacts/
+coverage/
+coverage.json
