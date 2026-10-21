@@ -1,0 +1,13 @@
+{
+  // Production build: src/ only, compiled to dist/ so the container runs plain `node`,
+  // with no TypeScript toolchain. "./x.ts" imports are rewritten to "./x.js".
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "rewriteRelativeImportExtensions": true,
+    "sourceMap": true
+  },
+  "include": ["src"]
+}

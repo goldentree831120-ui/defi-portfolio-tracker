@@ -1,0 +1,15 @@
+{
+  "name": "defi-tracker-e2e",
+  "private": true,
+  "description": "P2 M3: end-to-end test of the whole stack on a local Hardhat chain",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@types/node": "22.18.0",
+    "ethers": "6.15.0"
+  }
+}

@@ -1,0 +1,40 @@
+# Adds a local Hardhat chain and a one-shot deployer, so the whole app runs with no RPC
+# provider and no keys. Use with local.env, which points everything at this chain:
+#
+#   docker compose -f compose.yaml -f compose.local.yaml --env-file local.env up --build
+services:
+  # The local chain starts empty on every `up`, so the database must too: otherwise the indexer
+  # would find its stored blocks gone and (correctly) halt as if a deep reorg had happened.
+  db:
+    volumes: !reset []
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  chain:
+    build:
+      context: ./server
+      target: chain
+    ports:
+      - "127.0.0.1:8545:8545" # MetaMask in your browser talks to the chain directly
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8545',{method:'POST',headers:{'content-type':'application/json'},body:'{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_chainId\"}'}).then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  deploy:
+    build:
+      context: ./server
+      target: chain
+    command: ["node_modules/.bin/tsx", "scripts/deploy-local.ts"]
+    environment:
+      RPC_URL: http://chain:8545
+    depends_on:
+      chain:
+        condition: service_healthy
+    restart: "no"
+
+  server:
+    depends_on:
+      deploy:
+        condition: service_completed_successfully

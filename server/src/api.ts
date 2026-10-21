@@ -89,7 +89,8 @@ export function buildApi(deps: ApiDeps): FastifyInstance {
     reply.code(404).send(new ApiError(404, "NOT_FOUND", `no route ${req.method} ${req.url.split("?")[0]}`).toBody()),
   );
 
-  app.get("/health", async (_req, reply) => {
+  // Docker polls this every 10 s: log it only on warnings, not on every request.
+  app.get("/health", { logLevel: "warn" }, async (_req, reply) => {
     try {
       await deps.db.query("SELECT 1");
     } catch {

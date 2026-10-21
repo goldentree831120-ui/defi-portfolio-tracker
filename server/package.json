@@ -13,7 +13,11 @@
     "migrate": "tsx --env-file-if-exists=.env src/migrate-cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check:mutations": "./scripts/mutation-check.sh"
+    "check:mutations": "./scripts/mutation-check.sh",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && cp -r src/migrations dist/migrations",
+    "start:prod": "node --enable-source-maps dist/main.js",
+    "migrate:prod": "node dist/migrate-cli.js",
+    "deploy:local": "tsx scripts/deploy-local.ts"
   },
   "dependencies": {
     "ethers": "6.15.0",

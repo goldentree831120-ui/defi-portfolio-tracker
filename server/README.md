@@ -21,7 +21,10 @@ npm run dev:local     # embedded Postgres + Hardhat node + the real contracts + 
 npm test              # 30 tests: indexer (11) + API (19), against real Postgres and a real Hardhat chain
 npm run check:mutations   # plants 5 indexer bugs; every one must make a test fail
 npm run typecheck
+npm run build && npm run start:prod   # compiled JavaScript, what the Docker image runs
 ```
+
+Docker (the whole app, or fully local with its own chain): see [../DOCKER.md](../DOCKER.md).
 
 `dev:local` and the tests need no accounts, keys, Docker or installed Postgres: Postgres
 comes from the `embedded-postgres` npm package, and the chain is a local Hardhat node. Run

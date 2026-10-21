@@ -1,0 +1,59 @@
+# The whole app: Postgres + server (indexer + API) + web (nginx serving the frontend, proxying /api).
+#
+#   Real chain (Sepolia):  cp .env.example .env   # fill it in
+#                          docker compose up --build
+#   Fully local, no keys:  docker compose -f compose.yaml -f compose.local.yaml --env-file local.env up --build
+#
+# Open http://localhost:8080. Only the web port is published, and only on 127.0.0.1.
+name: defi-tracker
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: tracker
+      POSTGRES_USER: tracker
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD (see .env.example)}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tracker -d tracker"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  server:
+    build:
+      context: ./server
+      target: runtime
+    environment:
+      DATABASE_URL: postgres://tracker:${POSTGRES_PASSWORD}@db:5432/tracker
+      RPC_URL: ${RPC_URL:?set RPC_URL (see .env.example)}
+      CHAIN_ID: ${CHAIN_ID:-11155111}
+      STAKING_ADDRESS: ${STAKING_ADDRESS:?set STAKING_ADDRESS (see .env.example)}
+      START_BLOCK: ${START_BLOCK:?set START_BLOCK, the block the contract was deployed in}
+      CONFIRMATIONS: ${CONFIRMATIONS:-12}
+      POLL_INTERVAL_MS: ${POLL_INTERVAL_MS:-12000}
+      CORS_ORIGINS: ${PUBLIC_ORIGIN:-http://localhost:8080}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        VITE_CHAIN_ID: ${CHAIN_ID:-11155111}
+        VITE_STAKING_ADDRESS: ${STAKING_ADDRESS}
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
