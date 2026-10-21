@@ -10,6 +10,6 @@
   "devDependencies": {
     "@playwright/test": "1.64.0",
     "@types/node": "22.18.0",
-    "ethers": "6.15.0"
+    "ethers": "6.17.0"
   }
 }
