@@ -24,13 +24,15 @@ const children: ChildProcess[] = []
 function start(name: string, cmd: string, args: string[], opts: { cwd: string; env?: NodeJS.ProcessEnv; ready: RegExp }) {
   const bin = join(opts.cwd, 'node_modules', '.bin', cmd)
   if (!existsSync(bin)) throw new Error(`${name}: ${bin} not found. Run \`npm ci\` in ${opts.cwd} first.`)
-  const child = spawn(bin, args, { cwd: opts.cwd, env: { ...process.env, ...opts.env }, stdio: ['ignore', 'pipe', 'pipe'] })
+  // NO_COLOR: in CI (where the CI env var is set) tools colour their output, and colour codes
+  // between words break the readiness patterns below. They're also stripped, to be safe.
+  const child = spawn(bin, args, { cwd: opts.cwd, env: { ...process.env, NO_COLOR: '1', ...opts.env }, stdio: ['ignore', 'pipe', 'pipe'] })
   children.push(child)
   let out = ''
   return new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`${name} did not start in 120 s:\n${out.slice(-2000)}`)), 120_000)
     const onData = (d: Buffer) => {
-      out += d.toString()
+      out += d.toString().replace(/\x1b\[[0-9;]*m/g, '')
       const m = out.match(opts.ready)
       if (m) {
         clearTimeout(timer)
