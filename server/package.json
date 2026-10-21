@@ -1,0 +1,33 @@
+{
+  "name": "defi-tracker-server",
+  "version": "0.2.0",
+  "private": true,
+  "description": "P2 M2: Postgres indexer for the Staking contract + read-only REST API",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:local": "tsx scripts/dev.ts",
+    "start": "tsx --env-file-if-exists=.env src/main.ts",
+    "migrate": "tsx --env-file-if-exists=.env src/migrate-cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check:mutations": "./scripts/mutation-check.sh"
+  },
+  "dependencies": {
+    "ethers": "6.15.0",
+    "fastify": "5.6.1",
+    "pg": "8.16.3",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.0",
+    "@types/pg": "8.15.5",
+    "embedded-postgres": "17.9.0-beta.16",
+    "hardhat": "2.29.1",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}
