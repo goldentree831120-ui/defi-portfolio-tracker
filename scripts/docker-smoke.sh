@@ -2,6 +2,7 @@
 # Checks a running `docker compose` stack from the outside, the way a browser sees it.
 #   ./scripts/docker-smoke.sh                 # http://127.0.0.1:8080
 #   ./scripts/docker-smoke.sh http://host:port
+#   SMOKE_SKIP_DOCKER=1 ./scripts/docker-smoke.sh https://xxxx.cloudfront.net   # from a machine not running the stack
 set -uo pipefail
 BASE=${1:-http://127.0.0.1:8080}
 USER_ADDR=0x70997970C51812dc3A010C7d01b50e0d17dc79C8 # Hardhat test account #1 (local mode)
@@ -31,7 +32,7 @@ check "API is read-only: POST rejected"            '[[ $(curl -s -o /dev/null -w
 check "typed error for a bad address"              'curl -s "$BASE/api/v1/wallets/0xdeadbeef/summary" | grep -q INVALID_ADDRESS'
 check "wallet summary answers"                     'curl -s "$BASE/api/v1/wallets/$USER_ADDR/summary" | grep -q "\"address\""'
 
-if command -v docker >/dev/null; then
+if [[ -z ${SMOKE_SKIP_DOCKER:-} ]] && command -v docker >/dev/null; then
   # Find the containers by compose labels, so this works however the stack was started
   # (with or without compose.local.yaml / --env-file). The project name is set in compose.yaml.
   cid() { docker ps -q --filter label=com.docker.compose.project=defi-tracker --filter "label=com.docker.compose.service=$1" | head -1; }

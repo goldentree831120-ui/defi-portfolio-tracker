@@ -1,0 +1,8 @@
+# Production override for one EC2 server behind CloudFront:
+#   docker compose -f compose.yaml -f compose.aws.yaml up -d --build
+# The web container listens on port 80 of the server. The security group only lets
+# CloudFront reach it (see deploy/AWS.md), so the public entrance is CloudFront's HTTPS URL.
+services:
+  web:
+    ports: !override
+      - "80:8080"
