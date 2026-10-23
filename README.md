@@ -1,110 +1,147 @@
 # DeFi Portfolio Tracker
 
-A full-stack Web3 project built around a **Java backend**, not just Solidity + React — the angle that
-differentiates a Java/fullstack background from the flood of JS-only Web3 portfolios.
+[![CI](https://github.com/goldentree831120-ui/defi-portfolio-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/goldentree831120-ui/defi-portfolio-tracker/actions/workflows/ci.yml)
 
-**What it does:** reads a wallet's ERC-20 token balance and staking positions directly from an Ethereum
-testnet via [Web3j](https://github.com/web3j/web3j) (Java's equivalent of ethers.js), caches snapshots in
-Postgres/H2, and serves them over a REST API with a small dashboard on top.
+A staking dApp on Ethereum Sepolia with a backend that indexes the contract's events into
+Postgres. Users stake an ERC-20 token into time-locked tiers from a React frontend with
+MetaMask. A Node indexer follows the chain (waiting for confirmations, restart-safe) and serves
+wallet history and totals over a typed REST API. The whole stack runs with one Docker command,
+and CI runs every layer, including a real browser, on every push.
 
+**Testnet only.** No real funds are involved anywhere.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    user["Browser + MetaMask<br/>(React 19, ethers v6)"]
+    subgraph chain["Ethereum Sepolia"]
+        token["TrackerToken (ERC-20)"]
+        staking["Staking<br/>30d 5% · 90d 12% · 180d 25%<br/>10% early-exit penalty"]
+    end
+    subgraph stack["docker compose"]
+        web["web: nginx<br/>static app + /api proxy (GET only)"]
+        api["server: Fastify API<br/>zod validation, typed errors"]
+        idx["server: indexer<br/>polls eth_getLogs, N confirmations"]
+        db[("Postgres<br/>events · positions · cursor")]
+    end
+    user -- "stake / claim / withdraw<br/>(signed in MetaMask)" --> staking
+    user -- "live balances, pending rewards" --> staking
+    user -- "GET /api/v1/…" --> web --> api
+    staking -- "events via eth_getLogs<br/>Staked · RewardsClaimed · Withdrawn" --> idx
+    idx -- "events + cursor in ONE transaction" --> db
+    api -- "SELECT only" --> db
 ```
-contracts/   Solidity: TrackerToken (ERC-20) + Staking (tiered-APY staking pool). Hardhat + tests.
-backend/     Spring Boot + Web3j: reads on-chain state, caches it, exposes REST endpoints.
-             Static dashboard lives at backend/src/main/resources/static/index.html.
-```
 
-## Why this project (and not just "another staking dApp")
+- **The frontend reads live state straight from the chain** through MetaMask (balances, pending
+  rewards, lock timers), with every read pinned to one block so the numbers agree.
+- **The indexer** turns contract events into history the chain can't answer cheaply ("all my
+  positions, totals, every claim"). Its guarantees, each with a test:
+  confirmation depth before indexing; **events and cursor committed in one transaction**, so
+  a crash or restart never double-counts; idempotent inserts; one writer via row locks; halts
+  on a reorg deeper than the confirmation depth instead of building on a dead branch;
+  shrinks `eth_getLogs` ranges when an RPC provider caps them.
+- **The API** is read-only. Every input is validated, and every error has the same
+  `{error: {code, message, details}}` shape (`INVALID_ADDRESS`, `INVALID_QUERY`, …).
 
-A staking contract with a React frontend is common. Putting a **real backend service** in front of chain
-data — one that caches state, polls on a schedule, and serves a clean API instead of hitting an RPC
-node from the browser on every click — is the pattern real protocol/wallet/exchange backend teams
-actually hire for. It's also a legitimate way to make a Java background an asset instead of something to
-work around.
+Details: [`server/README.md`](server/README.md), [`frontend/README.md`](frontend/README.md),
+[`DOCKER.md`](DOCKER.md), [`e2e/README.md`](e2e/README.md).
 
-## 1. Contracts
+## Sepolia deployment
+
+| Contract | Address |
+|---|---|
+| Staking | [`0xd6AE22a0adE46C7eDbB92db28F6360089B94f513`](https://sepolia.etherscan.io/address/0xd6AE22a0adE46C7eDbB92db28F6360089B94f513) |
+| TrackerToken (TRK) | [`0x2ffEC8C4Db1931b33985c26a8abFB0890C10e4a5`](https://sepolia.etherscan.io/address/0x2ffEC8C4Db1931b33985c26a8abFB0890C10e4a5) |
+
+Deployed around block 11,962,251 from a deployer wallet used for nothing else. The reward pool
+was funded with 200,000 TRK.
+
+## Run it
 
 ```bash
-cd contracts
-npm install
-cp .env.example .env        # fill in SEPOLIA_RPC_URL + PRIVATE_KEY (see below)
-npx hardhat compile
-npx hardhat test
-npx hardhat run scripts/deploy.js --network sepolia
+# Everything, fully local, no keys or RPC provider: chain + contracts + Postgres + server + web
+docker compose -f compose.yaml -f compose.local.yaml --env-file local.env up --build
+./scripts/docker-smoke.sh            # 11 checks against the running stack; open http://localhost:8080
+
+# Or develop the parts separately
+cd server && npm ci && npm run dev:local    # embedded Postgres + Hardhat node + sample activity + API on :3001
+cd frontend && npm ci && npm run dev        # http://localhost:5173 (Sepolia by default, see .env.example)
 ```
 
-- **`TrackerToken.sol`** — plain OpenZeppelin ERC-20, 1,000,000 initial supply.
-- **`Staking.sol`** — tiered-APY staking (30-day/5%, 90-day/12%, 180-day/25%), with a 10% early-exit
-  penalty for withdrawing before the lock expires and a `ReentrancyGuard` on every state-changing call.
-  This is the "stretch feature" version of a plain stake/unstake contract — worth being able to explain
-  the reward-math and penalty logic in an interview.
-- Tests cover: reward accrual over time, the early-exit penalty, full principal return after unlock,
-  and two revert paths (invalid lock tier, double withdrawal).
+## Tests
 
-**Getting a free RPC URL:** sign up at [alchemy.com](https://alchemy.com) or [infura.io](https://infura.io),
-create a Sepolia app, copy the HTTPS URL. **Private key:** export it from a *throwaway* MetaMask wallet
-(Account details → Show private key) funded with free Sepolia ETH from a faucet like
-[sepoliafaucet.com](https://sepoliafaucet.com) — never use a wallet holding real funds.
-
-> **Note on this sandbox:** `npx hardhat compile` normally downloads the Solidity compiler from
-> `binaries.soliditylang.org`. This sandboxed session's network policy blocks that host, so the
-> contracts here were compiled with `node local-compile.js` (uses the `solc` npm package directly) and
-> tested with `npx hardhat test --no-compile`. On your own machine or in GitHub Actions, `npx hardhat
-> compile` will work normally — `local-compile.js` isn't needed there, it's just how this was verified
-> in this environment. All 5 tests pass.
-
-## 2. Backend
-
-```bash
-cd backend
-# after deploying contracts, export the two addresses deploy.js prints:
-export WEB3_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
-export TOKEN_ADDRESS=0x...
-export STAKING_ADDRESS=0x...
-export WATCHED_WALLETS=0xYourTestWallet
-mvn spring-boot:run
-```
-
-Then open `http://localhost:8080`.
-
-**Endpoints:**
-
-| Method | Path | What it does |
+| Layer | What | Count |
 |---|---|---|
-| GET | `/api/wallets/{address}` | Latest cached snapshot (fast — reads the DB) |
-| POST | `/api/wallets/{address}/refresh` | Forces a live read from the chain, stores a new snapshot |
-| GET | `/api/wallets/{address}/history?limit=30` | Snapshot history for a "value over time" chart |
+| Contracts | Hardhat: tiers, rewards accrual, early-exit penalty, invalid options, double withdrawal | 5 |
+| Frontend unit | Vitest: amount parsing without float rounding, MetaMask/ethers/contract errors → readable messages (incl. OpenZeppelin custom errors from raw revert data), penalty and lock maths, config | 46 |
+| Server | Vitest against **real Postgres and a real Hardhat chain**: indexer guarantees (crash mid-batch, restarts, two racing indexers, deep reorg, RPC range limits) + API (validation, typed errors, pagination, CORS) | 30 |
+| End-to-end | Playwright: a real browser stakes through the UI; the position is then checked in the UI, on-chain and in the API; a rejected transaction changes nothing; early withdrawal records the penalty | 4 |
+| Docker smoke | the running stack as a browser sees it: app, security headers, `/api`, read-only API, non-root server, no RPC key in the bundle | 11 |
+| Mutation checks | bugs deliberately planted in the frontend logic and the indexer; the tests must fail for every one | 6 + 5 |
 
-**How the Web3j layer works:** `ChainReaderService` encodes and decodes contract calls by hand with
-`FunctionEncoder`/`FunctionReturnDecoder` instead of using a generated contract wrapper (Web3j can
-generate one from an ABI via `web3j generate solidity`, but that's an extra build step). Reading a
-staking position uses the compiler's auto-generated flat getter for the `positions` mapping
-(`positions(address,uint256)` → six scalars) rather than decoding a dynamic array of structs, which is
-worth doing deliberately and simply rather than fighting ABI edge cases for a demo project.
+```bash
+./scripts/test-all.sh                # frontend + server + e2e
+./scripts/test-all.sh --mutations    # plus the mutation checks
+(cd contracts && npm ci && npx hardhat test)
+```
 
-`SnapshotPollingService` refreshes every watched wallet on a schedule (`web3.poll-interval-ms`,
-default 60s) so the API almost never has to make a live RPC call. Real production systems more often
-listen to contract *events* instead of polling every wallet — that's a natural "what would you do
-differently at scale" answer to have ready.
+**CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs all of this on every push
+in six jobs: secrets and dependency audit, contracts, frontend, server, end-to-end, and Docker
+(build the images, start the stack, smoke test).
 
-Defaults to an in-memory H2 database (zero setup). To use Postgres instead, uncomment the Postgres
-block in `application.yml` and point it at a local instance.
+## Security notes
 
-> **Note on this sandbox:** this session's network policy also blocks Maven Central
-> (`repo.maven.apache.org`), so `mvn compile` couldn't be run to verify the backend here. The code was
-> written and reviewed carefully, but **build it once on your own machine** (`mvn spring-boot:run`)
-> before relying on it — normal machines and CI have unrestricted access to Maven Central.
+- **No secrets in the frontend.** It needs no RPC key (reads and writes go through the user's
+  wallet), and only the public chain id and contract address are built into the bundle. The
+  Docker smoke test checks the served bundle for RPC provider keys.
+- **Secrets only in git-ignored `.env` files.** `scripts/check-secrets.sh` runs in CI and fails
+  on committed `.env` files, private keys or RPC URLs containing API keys (without printing them).
+- **Dependencies:** CI fails on high or critical advisories in production dependencies. The
+  first audit found real advisories in fastify 5.6.1 and ethers 6.15.0 (via `ws`); both were
+  upgraded (fastify 5.12.7, ethers 6.17.0).
+- **Least privilege at runtime:** the server image holds compiled JavaScript and production
+  dependencies only and runs as a non-root user. nginx runs unprivileged, allows GET only on
+  `/api` and sets security headers. Postgres isn't exposed outside the compose network.
+- **Key incident, and how it was handled:** an early commit included a testnet private key in
+  `contracts/.env.example`. It was treated as compromised: removed from every commit (history
+  rewritten), contracts redeployed from a new wallet (the addresses above), and the secret scan
+  added to CI so it can't happen again. The old contract and wallet are abandoned.
+- **Known contract limitations** (it's a learning contract): rewards are paid from the same
+  token balance that holds users' principal, so an under-funded pool could pay rewards out of
+  other users' stakes; rewards keep accruing after a position unlocks until it's withdrawn.
+  Fine on a testnet demo; both would need fixing before holding real value.
 
-## 3. Frontend
+## Deployment
 
-A single dependency-free HTML/JS dashboard at `backend/src/main/resources/static/index.html`, served
-by Spring Boot itself — no separate build step. Enter a wallet address, hit "Load" (reads the cache) or
-"Force refresh" (reads the chain live), see balance, staked total, pending rewards, and a table of
-individual positions with their lock/APY/status.
+The Docker stack is deployment-ready. [`deploy/AWS.md`](deploy/AWS.md) is a step-by-step guide
+for one EC2 server behind CloudFront (HTTPS without a domain; the server reachable only from
+CloudFront; secrets only on the server), with the cost of every step. It isn't currently live:
+the AWS account didn't pass identity verification.
 
-## Suggested next steps if you want to go further
+## Repository layout
 
-- Swap polling for event-driven updates: subscribe to `Staked`/`Withdrawn`/`RewardsClaimed` logs with
-  Web3j's `web3j.ethLogFlowable(...)` and update snapshots reactively instead of on a timer.
-- Add a second protocol (e.g. track balances across two staking contracts) to show the backend
-  generalizes beyond one integration.
-- Deploy the backend somewhere public (Railway/Render free tier) so the link in your resume is live.
+```
+contracts/   Solidity (Hardhat): TrackerToken, Staking, tests, deploy script
+frontend/    React + TypeScript + ethers v6 (Vite); Dockerfile + nginx config
+server/      Node 24 + TypeScript: indexer + Fastify API, Postgres migrations, tests
+e2e/         Playwright suite that starts the whole stack
+deploy/      AWS guide, server .env template, EC2 bootstrap script
+scripts/     test-all, docker-smoke, check-secrets, aws-up
+backend/     v1: the original Java (Spring Boot + Web3j) backend, kept for reference
+docs/        README-v1-java-backend.md: the v1 write-up
+```
+
+## From v1 to v2
+
+v1 was a Java Spring Boot + Web3j service that polled the contract and cached snapshots
+([write-up](docs/README-v1-java-backend.md)). v2 replaces snapshot polling with an **event
+indexer**: it stores every event once, in order, with explicit guarantees about confirmations,
+crashes and reorgs. It adds a typed API, Docker, a browser-level test suite and CI. The v1
+code stays in `backend/` for comparison.
+
+## Next steps
+
+- Show indexed history in the UI (the API already serves it; the UI reads only live chain state today).
+- Fix the two contract limitations above and redeploy.
+- Go live: the AWS guide, or a static frontend on GitHub Pages (it needs no server).
