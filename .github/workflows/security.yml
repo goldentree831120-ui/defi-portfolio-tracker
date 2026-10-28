@@ -1,0 +1,77 @@
+# Security review checks for the staking contracts (see SECURITY.md):
+#   - Foundry attack tests against the deployed contracts and the fixed version
+#   - Slither on both, failing on any finding that isn't triaged in security/staking/SLITHER_TRIAGE.md
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  foundry:
+    name: Staking attack tests (Foundry)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: contracts/package-lock.json
+      - name: Install OpenZeppelin (used by the contracts under test)
+        run: npm ci
+        working-directory: contracts
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.5.1
+      - name: forge test
+        run: forge test -vv
+        working-directory: security/staking
+
+  slither:
+    name: Slither (triaged findings only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      SOLC_VERSION: "0.8.26"
+      SOLC_SHA256: d5f23436f443edb85d8e76906d12f0a86ce0490e7663a9e608efeb7a93f149ef
+      # Detectors triaged as false positives or accepted in security/staking/SLITHER_TRIAGE.md
+      EXCLUDE: timestamp,assembly,pragma,solc-version,dead-code
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: contracts/package-lock.json
+      - run: npm ci
+        working-directory: contracts
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install Slither and solc (checksum-verified)
+        run: |
+          pip install slither-analyzer==0.11.3
+          curl -fsSL -o solc "https://github.com/ethereum/solidity/releases/download/v${SOLC_VERSION}/solc-static-linux"
+          echo "${SOLC_SHA256}  solc" | sha256sum -c -
+          chmod +x solc
+          sudo mv solc /usr/local/bin/solc
+          solc --version
+      - name: Slither on the deployed Staking.sol and StakingFixed.sol
+        run: |
+          for f in contracts/contracts/Staking.sol security/staking/src/StakingFixed.sol; do
+            echo "== $f"
+            slither "$f" --compile-force-framework solc --solc /usr/local/bin/solc \
+              --solc-remaps "@openzeppelin/contracts/=contracts/node_modules/@openzeppelin/contracts/" \
+              --exclude-dependencies --exclude "$EXCLUDE" --fail-low
+          done

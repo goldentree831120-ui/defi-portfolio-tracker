@@ -89,6 +89,8 @@ cd frontend && npm ci && npm run dev        # http://localhost:5173 (Sepolia by 
 **CI** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs all of this on every push
 in six jobs: secrets and dependency audit, contracts, frontend, server, end-to-end, and Docker
 (build the images, start the stack, smoke test).
+[`.github/workflows/security.yml`](.github/workflows/security.yml) runs the contract security
+review: the Foundry attack tests, and Slither, which fails on any finding not triaged.
 
 ## Security notes
 
@@ -107,10 +109,15 @@ in six jobs: secrets and dependency audit, contracts, frontend, server, end-to-e
   `contracts/.env.example`. It was treated as compromised: removed from every commit (history
   rewritten), contracts redeployed from a new wallet (the addresses above), and the secret scan
   added to CI so it can't happen again. The old contract and wallet are abandoned.
-- **Known contract limitations** (it's a learning contract): rewards are paid from the same
-  token balance that holds users' principal, so an under-funded pool could pay rewards out of
-  other users' stakes; rewards keep accruing after a position unlocks until it's withdrawn.
-  Fine on a testnet demo; both would need fixing before holding real value.
+- **Security review of the contracts:** [`SECURITY.md`](SECURITY.md) and
+  [`security/staking/`](security/staking/): threat model, Slither triage, and 15 Foundry attack
+  tests run against the deployed contracts. Main finding (High): rewards are paid from the same
+  token balance as principal, so rewards beyond the funded pool come out of other stakers'
+  deposits; a large staker can drain everyone else. Also: an empty pool blocks withdrawing
+  principal (High), and rewards keep accruing after the lock ends (Medium). Slither found none
+  of these; the tests did. `StakingFixed.sol` fixes all three (separate principal and reward
+  accounting, checked by a 1,000-run fuzz test). The Sepolia contract is the original and can't
+  be patched, so the fixes would need a new deployment.
 
 ## Deployment
 
@@ -123,6 +130,7 @@ the AWS account didn't pass identity verification.
 
 ```
 contracts/   Solidity (Hardhat): TrackerToken, Staking, tests, deploy script
+security/    staking review: threat model, Slither triage, Foundry attack tests, fixed contract
 frontend/    React + TypeScript + ethers v6 (Vite); Dockerfile + nginx config
 server/      Node 24 + TypeScript: indexer + Fastify API, Postgres migrations, tests
 e2e/         Playwright suite that starts the whole stack

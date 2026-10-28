@@ -1,0 +1,21 @@
+# Security review of the staking contracts (Foundry). The ORIGINAL contracts are tested where
+# they live, in ../../contracts/contracts, so this review can't drift from the deployed code.
+# OpenZeppelin comes from the Hardhat project's node_modules: run `npm ci` in contracts/ first.
+[profile.default]
+src = "src"
+test = "test"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.26"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+allow_paths = ["../../contracts"]
+remappings = [
+  "@openzeppelin/contracts/=../../contracts/node_modules/@openzeppelin/contracts/",
+  "forge-std/=lib/forge-std/src/",
+  "tracker/=../../contracts/contracts/",   # the deployed contracts, reviewed in place
+]
+
+[fuzz]
+runs = 1000
