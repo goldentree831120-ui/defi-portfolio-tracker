@@ -1,8 +1,9 @@
 # Threat model: Staking.sol + TrackerToken.sol
 
 Scope: `contracts/contracts/Staking.sol` and `TrackerToken.sol` from defi-portfolio-tracker,
-as deployed on Sepolia (Staking `0x707AbBCEd16c1872e08ba56d079eacE17960F8D6`, TRK
-`0x5Db69118dB4652CBC39F027Fb28b6B5e8A9eE593`). Reviewed with OpenZeppelin 5.6.1 (the version in
+the code deployed on Sepolia (Staking `0xd6AE22a0adE46C7eDbB92db28F6360089B94f513`, TRK
+`0x2ffEC8C4Db1931b33985c26a8abFB0890C10e4a5`; the first deployment at `0x707A…F8D6` was abandoned
+after OPS-1). Reviewed with OpenZeppelin 5.6.1 (the version in
 `package.json`) and solc 0.8.26 (deployed with 0.8.24; no relevant semantic differences).
 Out of scope: the Java backend, the frontend, the escrow contract (reviewed separately).
 
