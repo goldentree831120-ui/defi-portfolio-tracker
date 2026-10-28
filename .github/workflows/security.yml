@@ -43,7 +43,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
-      SOLC_VERSION: "0.8.26"
+      # Not named SOLC_VERSION: solc-select (installed with Slither) reads that variable.
+      SOLC_RELEASE: "0.8.26"
       SOLC_SHA256: d5f23436f443edb85d8e76906d12f0a86ce0490e7663a9e608efeb7a93f149ef
       # Detectors triaged as false positives or accepted in security/staking/SLITHER_TRIAGE.md
       EXCLUDE: timestamp,assembly,pragma,solc-version,dead-code
@@ -62,16 +63,17 @@ jobs:
       - name: Install Slither and solc (checksum-verified)
         run: |
           pip install slither-analyzer==0.11.3
-          curl -fsSL -o solc "https://github.com/ethereum/solidity/releases/download/v${SOLC_VERSION}/solc-static-linux"
+          curl -fsSL -o solc "https://github.com/ethereum/solidity/releases/download/v${SOLC_RELEASE}/solc-static-linux"
           echo "${SOLC_SHA256}  solc" | sha256sum -c -
           chmod +x solc
-          sudo mv solc /usr/local/bin/solc
-          solc --version
+          # A distinct name and full path, so solc-select's own `solc` wrapper is never used
+          sudo mv solc /usr/local/bin/solc-0.8.26
+          /usr/local/bin/solc-0.8.26 --version
       - name: Slither on the deployed Staking.sol and StakingFixed.sol
         run: |
           for f in contracts/contracts/Staking.sol security/staking/src/StakingFixed.sol; do
             echo "== $f"
-            slither "$f" --compile-force-framework solc --solc /usr/local/bin/solc \
+            slither "$f" --compile-force-framework solc --solc /usr/local/bin/solc-0.8.26 \
               --solc-remaps "@openzeppelin/contracts/=contracts/node_modules/@openzeppelin/contracts/" \
               --exclude-dependencies --exclude "$EXCLUDE" --fail-low
           done
