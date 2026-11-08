@@ -27,10 +27,7 @@ public class PortfolioController {
         this.chainReader = chainReader;
     }
 
-    /**
-     * Latest cached snapshot for a wallet, enriched with live position
-     * details. Cheap and fast - reads from the DB, not the chain.
-     */
+  
     @GetMapping("/{address}")
     public ResponseEntity<PortfolioResponse> getLatest(@PathVariable String address) {
         return repository.findTopByWalletAddressIgnoreCaseOrderByCapturedAtDesc(address)
@@ -38,18 +35,14 @@ public class PortfolioController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    /**
-     * Forces a fresh read straight from the chain via Web3j and stores a
-     * new snapshot. Use sparingly - this is the "slow path" the scheduled
-     * poller exists to avoid calling on every request.
-     */
+ 
     @PostMapping("/{address}/refresh")
     public ResponseEntity<PortfolioResponse> refresh(@PathVariable String address) {
         PortfolioSnapshot snapshot = pollingService.refreshWallet(address);
         return ResponseEntity.ok(toResponse(snapshot));
     }
 
-    /** Snapshot history for a wallet, most recent first - useful for a "value over time" chart. */
+    
     @GetMapping("/{address}/history")
     public ResponseEntity<List<PortfolioResponse>> history(
             @PathVariable String address,
