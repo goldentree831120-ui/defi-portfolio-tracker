@@ -7,7 +7,7 @@ import java.math.BigInteger;
 import java.time.Instant;
 import java.util.List;
 
-/** API-facing view of a snapshot: wei amounts converted to human-readable token units (18 decimals). */
+
 public record PortfolioResponse(
         String walletAddress,
         BigDecimal tokenBalance,
