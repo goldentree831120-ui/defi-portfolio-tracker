@@ -4,15 +4,7 @@ import jakarta.persistence.*;
 
 import java.time.Instant;
 
-/**
- * A point-in-time snapshot of one wallet's on-chain position, as read via
- * Web3j and cached here so the API doesn't have to hit the RPC node on
- * every request. {@link com.tracker.portfolio.service.SnapshotPollingService}
- * writes new rows on a schedule; the REST layer mostly reads from here.
- *
- * Wei amounts are stored as strings (not long/double) because ERC-20
- * balances routinely exceed Java's numeric range at 18-decimal precision.
- */
+
 @Entity
 @Table(name = "portfolio_snapshot", indexes = {
         @Index(name = "idx_wallet_captured", columnList = "walletAddress,capturedAt")
@@ -30,11 +22,11 @@ public class PortfolioSnapshot {
     @Column(nullable = false, length = 78)
     private String tokenBalanceWei;
 
-    /** Sum of `amount` across all non-withdrawn staking positions, in wei. */
+    
     @Column(nullable = false, length = 78)
     private String stakedTotalWei;
 
-    /** Sum of pendingRewards() across all non-withdrawn positions, in wei. */
+   
     @Column(nullable = false, length = 78)
     private String pendingRewardsWei;
 
