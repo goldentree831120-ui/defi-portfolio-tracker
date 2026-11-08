@@ -5,11 +5,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import java.util.Arrays;
 import java.util.List;
 
-/**
- * Binds the `web3.*` block in application.yml. Kept as a plain properties
- * class (rather than scattering @Value everywhere) so every on-chain
- * setting lives in one place.
- */
 @ConfigurationProperties(prefix = "web3")
 public class Web3Properties {
 
